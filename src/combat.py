@@ -6,19 +6,23 @@ from tkinter import *
 import math
 
 mapCons = 50
+mapConsCen = mapCons//2
 spacing = mapCons//10+2
 
 
-
-class combat_map:
+class CombatMap:
     colorDict = {
-        0 : "snow",
-        1 : "black",
-        2 : "blue",
-        3 : "red",
-        4 : "yellow",
-        5 : "gray"
+        0: "snow",
+        1: "black",
+        2: "gray",
+        3: "red",
+        4: "yellow",
+        5: "blue"
     }
+    tripwire = 0
+    selLoc = [0, 0]
+    #[0] : distance flag [1]: select line object
+    impObs = [0, 0]
 
     def draw_map(self, x, y):
         self.master = Tk()
@@ -37,6 +41,10 @@ class combat_map:
         for i in range(y + 1):
             self.objects.append(self.canvas.create_line(0, i * mapCons, mapCons * x, i * mapCons, fill=self.colorDict[1]))
 
+        self.impObs[1] = len(self.objects)
+        print(len(self.objects))
+        self.objects.append(self.canvas.create_line(0, 0, 0, 0, width=3, fill=self.colorDict[2]))
+
     def select(self, event):
         print("X: " + str(event.x) + " Y: " + str(event.y))
         gridPos = [event.x//mapCons, event.y//mapCons]
@@ -44,15 +52,13 @@ class combat_map:
 
         square = self.map[gridPos[1]][gridPos[0]]
 
-        if self.sel != 0 and square.type == 0:
+        if self.sel != 0 and square.type == 0 and self.impObs[0] == 0:
             # move class
-
             square.loc = [self.sel.loc[0], self.sel.loc[1]]
             self.map[self.sel.loc[1]][self.sel.loc[0]] = square
 
             # move object representation
             print("GP: " + str(gridPos[0]) + " loc: " + str(self.sel.loc[0]))
-
             self.canvas.move(self.objects[self.sel.obInd],
                              (gridPos[0] - self.sel.loc[0]) * mapCons,
                              (gridPos[1] - self.sel.loc[1]) * mapCons)
@@ -61,6 +67,8 @@ class combat_map:
             self.sel.loc = gridPos
             self.map[gridPos[1]][gridPos[0]] = self.sel
             self.sel = 0
+            # hide move line again
+            self.canvas.coords(self.objects[self.impObs[1]], 0, 0, 0, 0)
             print("moved")
         elif square.type != 0:
             self.sel = self.map[gridPos[1]][gridPos[0]]
@@ -68,20 +76,41 @@ class combat_map:
         else:
             print(square.type)
 
-
-    def addChar(self):
-
+    def add_char(self, x, y, t, s):
         """
         This function adds an empty character
         """
-        self.map[0][0] = character_class(len(self.objects), 0, 0)
-        self.objects.append(self.canvas.create_rectangle(spacing, spacing, mapCons - spacing, mapCons - spacing, fill=self.colorDict[2]))
+        self.map[y][x] = character_class(len(self.objects), x, y, t, s)
+        self.objects.append(self.canvas.create_rectangle(spacing, spacing, mapCons - spacing, mapCons - spacing, fill=self.colorDict[5]))
         print("character added")
+
+    def motion(self, event):
+        #should we worry about the mouse moving?
+        if self.sel != 0:
+            qx = event.x//mapCons
+            qy = event.y//mapCons
+            #if so, has it made a relevant movement?
+            if qx != self.selLoc[0] or qy != self.selLoc[1]:
+                self.selLoc[0] = qx
+                self.selLoc[1] = qy
+
+                if (qx-self.sel.loc[0])**2 + (qy-self.sel.loc[1])**2 > self.sel.speed**2 and self.sel.speed != 0:
+                    self.canvas.itemconfig(self.objects[self.impObs[1]], fill=self.colorDict[3])
+                    self.impObs[0] = 1
+                else:
+                    self.canvas.itemconfig(self.objects[self.impObs[1]], fill=self.colorDict[2])
+                    self.impObs[0] = 0
+
+                self.canvas.coords(self.objects[self.impObs[1]],
+                                   self.sel.loc[0]*mapCons+mapConsCen, self.sel.loc[1]*mapCons+mapConsCen,
+                                   qx*mapCons+mapConsCen, qy*mapCons+mapConsCen)
+
 
     #def update(self):
 
 
-
+    def leave(self,event):
+        self.tripwire = 1
 
     def printOut(self,event):
         for x in self.map:
@@ -101,8 +130,10 @@ class combat_map:
             self.map.append(temp)
         self.draw_map(x, y)
         self.canvas.bind("<ButtonRelease-1>", self.select)
+        self.canvas.bind("<Button-2>", self.leave)
         self.canvas.bind("<Button-3>", self.printOut)
-        #mainloop()
+        self.canvas.bind("<Motion>", self.motion)
+
 
 """
     def moveNorth(self, ID):
@@ -143,7 +174,8 @@ class object:
 
 class character_class(object):
 
-    def __init__(self,ind, x, y, t=1):
+    def __init__(self, ind, x, y, t=1, s=6):
+        self.speed = s
         self.obInd = ind
         super().__init__(x, y, t)
         self.printOut()
@@ -151,10 +183,9 @@ class character_class(object):
 
     def printOut(self):
         #print("This character's ID is: " + str(self.player_ID))
+        print("This character's speed is: " + str(self.speed))
         print("This Ob ind is: " + str(self.obInd))
         print("x: " + str(self.loc[0]) + " y: " + str(self.loc[1]))
-
-
 
 
 
@@ -162,36 +193,33 @@ class character_class(object):
 def main():
     width = 7
     height = 13
-    playArea = combat_map(width, height)
+    playarea = CombatMap(width, height)
 
-    playArea.addChar()
+    playarea.add_char(0, 0, 1, 8)
     start = time.time()
     fps = 0
     while True:
-        #for i in range(10):
-        playArea.master.update_idletasks()
-        playArea.master.update()
+        playarea.master.update_idletasks()
+        playarea.master.update()
         fps += 1
-    """
+        """
         if time.time() - start > 1:
+            start = time.time()
+            print("Frames captures: " + str(fps))
+            fps = 0
+        """
+        if playarea.tripwire == 1:
             break
-    print("Frames captures: " + str(fps))
-    """
-        #val = input("where would you like to go? ")
-        #if val == "w":
-        #    playArea.moveNorth(1)
-        #elif val == "d":
-        #    playArea.moveEast(1)
-        #elif val == "s":
-        #    playArea.moveSouth(1)
-        #elif val == "a":
-        #    playArea.moveWest(1)
 
-        #if val == "b":
-        #    break
 
     return 1
 
+main()
+"""
+Timing tests:
+this area isn't supposed to be in the end result and more to
+focus on the timing of certain fuctions
+"""
 def canvas_test():
     can_w = 400
     can_h = 400
@@ -221,14 +249,6 @@ def canvas_test():
     while True:
         master.update_idletasks()
         master.update()
-    #mainloop()
-
-
-#canvas_test()
-main()
-#Timing tests:
-#this area isn't supposed to be in the end result and more to
-#focus on the timing of certain fuctions
 
 def timing():
     start = time.time()
@@ -238,3 +258,4 @@ def timing():
 
     end = time.time()
     print(end - start)
+

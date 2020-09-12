@@ -17,14 +17,24 @@ class CombatMap:
         2: "gray",
         3: "red",
         4: "yellow",
-        5: "blue"
+        5: "blue",
+        6: "gray12"
     }
-    tripwire = 0
+    mathList = [.707, .5]
+
+
+
     selLoc = [0, 0]
-    #[0] : distance flag [1]: select line object
-    impObs = [0, 0]
+    #[0] : out of range flag [1]: select line object [2]: tripwire [3]: debug pathH
+    impObs = [0, 0, 0, 1]
+    size = [5, 5]
+    pathHighlight = []
+    pathHardpoints = []
+
 
     def draw_map(self, x, y):
+        self.size[0] = x
+        self.size[1] = y
         self.master = Tk()
         self.canvas = Canvas(self.master,
                              width=mapCons * x,
@@ -36,14 +46,20 @@ class CombatMap:
         """
         self.objects.append(self.canvas.create_line(2, 0, 2, mapCons * y, fill=self.colorDict[1]))
         for i in range(x + 1):
-            self.objects.append(self.canvas.create_line(i * mapCons, 0, i * mapCons, mapCons * y, fill=self.colorDict[1]))
+            self.objects.append(self.canvas.create_line(i * mapCons, 0,
+                                                        i * mapCons, mapCons * y,
+                                                        fill=self.colorDict[1]))
         self.objects.append(self.canvas.create_line(0, 2, mapCons * x, 2, fill=self.colorDict[1]))
         for i in range(y + 1):
-            self.objects.append(self.canvas.create_line(0, i * mapCons, mapCons * x, i * mapCons, fill=self.colorDict[1]))
+            self.objects.append(self.canvas.create_line(0, i * mapCons,
+                                                        mapCons * x, i * mapCons,
+                                                        fill=self.colorDict[1]))
 
         self.impObs[1] = len(self.objects)
-        print(len(self.objects))
+
         self.objects.append(self.canvas.create_line(0, 0, 0, 0, width=3, fill=self.colorDict[2]))
+
+        print("Number of essential objects: " + str(len(self.objects)))
 
     def select(self, event):
         print("X: " + str(event.x) + " Y: " + str(event.y))
@@ -69,20 +85,152 @@ class CombatMap:
             self.sel = 0
             # hide move line again
             self.canvas.coords(self.objects[self.impObs[1]], 0, 0, 0, 0)
+            self.clean_path()
             print("moved")
-        elif square.type != 0:
+        elif square.type != 0 and square.type != "X":
             self.sel = self.map[gridPos[1]][gridPos[0]]
             print("selected")
         else:
             print(square.type)
 
+    def clean_path(self):
+        for i in self.pathHighlight:
+            self.canvas.delete(i)
+        for i in self.pathHardpoints:
+            self.canvas.delete(i)
+
+    def find_path(self, x1, y1, x2, y2, w=.5):
+        self.clean_path()
+
+        path = set()
+        high = {(x1, y1)}
+        if x1 == x2:
+            for i in range(y1, y2+1):
+                path.add((x1, y1+i))
+                self.pathHighlight.append(self.canvas.create_rectangle(x1 * mapCons, i * mapCons,
+                                                                       (x1 * mapCons) + mapCons,
+                                                                       (i * mapCons) + mapCons,
+                                                                       fill=self.colorDict[3],
+                                                                       stipple=self.colorDict[6]))
+        elif y1 == y2:
+            for i in range(x1, x2+1):
+                path.add((x1+i, y1))
+                self.pathHighlight.append(self.canvas.create_rectangle(i * mapCons, y1 * mapCons,
+                                                                       (i * mapCons) + mapCons,
+                                                                       (y1 * mapCons) + mapCons,
+                                                                       fill=self.colorDict[3],
+                                                                       stipple=self.colorDict[6]))
+        else:
+            """
+            #Okay, I'm a bit proud of this next part
+            resolution = .5
+            dy = y2 - y1
+            dx = x2 - x1
+            m = dy/dx
+            flip = 1
+            if x2 < x1:
+                flip = -1
+            print("slope: " + str(m))
+            xtrav = math.sqrt(1+m**2)/(1+m**2)
+            ytrav = m*xtrav
+
+
+            for i in range(0, int(math.sqrt(dx**2+dy**2)/resolution)):
+                x1 += xtrav*resolution*flip
+                y1 += ytrav*resolution*flip
+                if self.impObs[3]:
+                    
+                    
+                    version 1:
+                    self.pathHardpoints.append(self.canvas.create_rectangle(x1*mapCons+mapConsCen-2,
+                                                                            y1*mapCons+mapConsCen-2,
+                                                                            x1*mapCons+2+mapConsCen,
+                                                                            y1*mapCons+2+mapConsCen,
+                                                                            fill=self.colorDict[4]))
+
+                    pivot = math.atan(m)
+                    self.pathHardpoints.append(self.canvas.create_line((x1+(math.cos(pivot+90))*self.mathList[1])*mapCons+mapConsCen,
+                                                                       (y1+(math.sin(pivot+90))*self.mathList[1])*mapCons+mapConsCen,
+                                                                       (x1+(math.cos(pivot-90))*self.mathList[1])*mapCons+mapConsCen,
+                                                                       (y1+(math.sin(pivot-90))*self.mathList[1])*mapCons+mapConsCen, fill=self.colorDict[3]))
+                cand = (round(x1), round(y1))
+                if path[-1] != cand:
+                    path.append(cand)
+            """
+            #version 2:
+            dy = y2 - y1
+            dx = x2 - x1
+            m = dy/dx
+
+            pivot = math.atan(m)+1.571
+            xf = 1
+            if dx < 0:
+                xf = -1
+            yf = 1
+            if dy < 0:
+                yf = -1
+            for i in range(abs(dy)):
+                path.add((((.5 + i) * yf) / m + x1, (.5 + i) * yf + y1))
+            for i in range(abs(dx)):
+                path.add(((.5 + i) * xf + x1, (.5 + i) * xf * m + y1))
+
+            for i in path:
+                self.pathHardpoints.append(self.canvas.create_rectangle(i[0] * mapCons + mapConsCen - 2,
+                                                                        i[1] * mapCons + mapConsCen - 2,
+                                                                        i[0] * mapCons + 2 + mapConsCen,
+                                                                        i[1] * mapCons + 2 + mapConsCen,
+                                                                        fill=self.colorDict[4]))
+
+                self.pathHardpoints.append(
+                    self.canvas.create_line((i[0] - math.cos(pivot)*w) * mapCons + mapConsCen,
+                                            (i[1] - math.sin(pivot)*w) * mapCons + mapConsCen,
+                                            (i[0] + math.cos(pivot)*w) * mapCons + mapConsCen,
+                                            (i[1] + math.sin(pivot)*w) * mapCons + mapConsCen,
+                                            fill=self.colorDict[3]))
+                high.add((round(i[0] - math.cos(pivot) * w), round(i[1] - math.sin(pivot) * w)))
+                high.add((round(i[0] + math.cos(pivot) * w), round(i[1] + math.sin(pivot) * w)))
+                high.add((round(i[0] + (math.cos(math.atan(m)) * w)*xf), round(i[1] + (math.sin(math.atan(m)) * w)*xf)))
+
+            for i in high:
+                self.pathHighlight.append(self.canvas.create_rectangle(i[0] * mapCons,
+                                                                       i[1] * mapCons,
+                                                                       i[0] * mapCons + mapCons,
+                                                                       i[1] * mapCons + mapCons,
+                                                                       fill=self.colorDict[3],
+                                                                       stipple=self.colorDict[6]))
+
+        #print("current path: " + str(path))
+
+
+
+
+
+
+
+
+    #def build_path(self, x1, y1, x2, y2):
+
+
+
     def add_char(self, x, y, t, s):
         """
         This function adds an empty character
         """
-        self.map[y][x] = character_class(len(self.objects), x, y, t, s)
-        self.objects.append(self.canvas.create_rectangle(spacing, spacing, mapCons - spacing, mapCons - spacing, fill=self.colorDict[5]))
+        self.map[y][x] = Character(len(self.objects), x, y, t, s)
+        self.objects.append(self.canvas.create_rectangle(x*mapCons+spacing, y*mapCons+spacing,
+                                                         (x*mapCons)+mapCons-spacing, (y*mapCons)+mapCons-spacing,
+                                                         fill=self.colorDict[5]))
         print("character added")
+
+    def add_wall(self, x1, y1, x2, y2):
+        sto = len(self.objects)
+
+        for y in range(y1, y2+1):
+            for x in range(x1, x2+1):
+                self.map[y][x] = Wall(sto, x, y)
+        self.objects.append(self.canvas.create_rectangle(x1*mapCons+spacing, y1*mapCons+spacing,
+                                                         (x2*mapCons)+mapCons-spacing, (y2*mapCons)+mapCons-spacing,
+                                                         fill=self.colorDict[1]))
 
     def motion(self, event):
         #should we worry about the mouse moving?
@@ -90,9 +238,10 @@ class CombatMap:
             qx = event.x//mapCons
             qy = event.y//mapCons
             #if so, has it made a relevant movement?
-            if qx != self.selLoc[0] or qy != self.selLoc[1]:
+            if (qx != self.selLoc[0] or qy != self.selLoc[1]) and qx < self.size[0] and qy < self.size[1]:
                 self.selLoc[0] = qx
                 self.selLoc[1] = qy
+                self.find_path(self.sel.loc[0], self.sel.loc[1], qx, qy)
 
                 if (qx-self.sel.loc[0])**2 + (qy-self.sel.loc[1])**2 > self.sel.speed**2 and self.sel.speed != 0:
                     self.canvas.itemconfig(self.objects[self.impObs[1]], fill=self.colorDict[3])
@@ -105,14 +254,10 @@ class CombatMap:
                                    self.sel.loc[0]*mapCons+mapConsCen, self.sel.loc[1]*mapCons+mapConsCen,
                                    qx*mapCons+mapConsCen, qy*mapCons+mapConsCen)
 
+    def leave(self, event):
+        self.impObs[2] = 1
 
-    #def update(self):
-
-
-    def leave(self,event):
-        self.tripwire = 1
-
-    def printOut(self,event):
+    def printOut(self, event):
         for x in self.map:
             for y in x:
                 print(y.type, end=" ")
@@ -172,17 +317,22 @@ class object:
         self.type = t
         self.loc = [x, y]
 
-class character_class(object):
+class Wall(object):
+    def __init__(self, ind, x, y):
+        self.obInd = ind
+        super().__init__(x, y, "X")
+
+
+class Character(object):
 
     def __init__(self, ind, x, y, t=1, s=6):
         self.speed = s
         self.obInd = ind
         super().__init__(x, y, t)
-        self.printOut()
+        #self.printOut()
 
 
     def printOut(self):
-        #print("This character's ID is: " + str(self.player_ID))
         print("This character's speed is: " + str(self.speed))
         print("This Ob ind is: " + str(self.obInd))
         print("x: " + str(self.loc[0]) + " y: " + str(self.loc[1]))
@@ -191,11 +341,13 @@ class character_class(object):
 
 
 def main():
-    width = 7
-    height = 13
+    width = 10
+    height = 15
     playarea = CombatMap(width, height)
 
-    playarea.add_char(0, 0, 1, 8)
+    playarea.add_char(5, 5, 1, 6)
+    playarea.add_wall(4, 3, 5, 3)
+    print("total objects: " + str(len(playarea.objects)))
     start = time.time()
     fps = 0
     while True:
@@ -208,11 +360,12 @@ def main():
             print("Frames captures: " + str(fps))
             fps = 0
         """
-        if playarea.tripwire == 1:
+        if playarea.impObs[2] == 1:
             break
 
 
     return 1
+
 
 main()
 """

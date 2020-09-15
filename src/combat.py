@@ -25,14 +25,19 @@ class CombatMap:
 
 
     selLoc = [0, 0]
-    #[0] : out of range flag [1]: select line object OBSO [2]: tripwire [3]: debug pathH
-    impObs = [0, 0, 0, 1]
+    #[0] : out of range flag [1]: select line object OBSO [2]: tripwire [3]: debug pathH [4]: graph paths
+    impObs = [0, 0, 0, 0, 0]
     size = [5, 5]
     sel = 0
     map = []
     objects = []
+
+
     wallList = []
     mapCorners = []
+    cornerGraph = []
+    se_nodes_built = False
+
     pathLine = []
     pathHighlight = []
     pathHardpoints = []
@@ -72,19 +77,19 @@ class CombatMap:
             self.canvas.delete(i)
         del self.pathLine[:]
 
-    def find_path(self, x1, y1, x2, y2, dist=5, w=.5):
+    def find_path(self, x1, y1, x2, y2, w=.5):
         path = set()
         high = {(x1, y1)}
-        self.pathLine.append(self.canvas.create_line(x1 * mapCons + mapConsCen, y1 * mapCons + mapConsCen,
-                                                     x2 * mapCons + mapConsCen, y2 * mapCons + mapConsCen,
-                                                     width=3, fill=self.colorDict[2]))
+
         dy = y2 - y1
         dx = x2 - x1
+        """
+        DECOMISSIONED FOR NOW<<<<
         if dx ** 2 + dy ** 2 > dist ** 2 and dist != 0:
             self.canvas.itemconfig(self.pathLine[0], fill=self.colorDict[3])
         else:
             self.canvas.itemconfig(self.pathLine[0], fill=self.colorDict[2])
-
+        """
         if x1 == x2:
             for i in range(y1, y2+1):
                 high.add((x1, i))
@@ -171,33 +176,96 @@ class CombatMap:
                 high.add((round(i[0] + math.cos(pivot) * w), round(i[1] + math.sin(pivot) * w)))
                 high.add((round(i[0] + (math.cos(math.atan(m)) * w) * xf),
                           round(i[1] + (math.sin(math.atan(m)) * w) * xf)))
+        if self.impObs[3]:
+            self.highlight_path(high)
+        return self.get_conflicts(high)
+    """
+    Obsolete
+    def find_player_path(self, x2, y2, sp=5):
+        if self.find_path(self.sel.loc[0], self.sel.loc[1], x2, y2):
+            self.clean_path()
+            self.draw_line(self.sel.loc[0], self.sel.loc[1], x2, y2)
+        else:
+            if self.se_nodes_built:
+                self.clean_graph_end()
+            self.attach_node(x2, y2)
+            self.se_nodes_built = True
+    """
 
-        self.highlight_path(high)
-        self.get_conflicts(high)
+    def clean_graph_end(self):
+        sto = self.cornerGraph.pop()
+        for i in sto.connections:
+            self.cornerGraph[i[0]].connections.pop()
+        del sto
 
+    def attach_node(self, x, y):
+        pos = len(self.cornerGraph)
+        self.cornerGraph.append(Graph(pos, x, y))
+        for c, v in enumerate(self.cornerGraph[:-1]):
+            if self.find_path(x, y, v.loc[0], v.loc[1]):
+                if self.impObs[4]:
+                    self.draw_line(v.loc[0], v.loc[1], x, y)
+                dis = math.sqrt((x - v.loc[0]) ** 2 + (y - v.loc[1]) ** 2)
+                self.cornerGraph[pos].add_path(c, dis)
+                v.add_path(pos, dis)
+        #print(self.cornerGraph[pos].connections)
 
-
+    def draw_line(self, x1, y1, x2, y2):
+        self.pathLine.append(self.canvas.create_line(x1 * mapCons + mapConsCen, y1 * mapCons + mapConsCen,
+                                                     x2 * mapCons + mapConsCen, y2 * mapCons + mapConsCen,
+                                                     width=3, fill=self.colorDict[2]))
 
     def get_conflicts(self, lis):
         sto = []
         for i in lis:
             if self.map[i[1]][i[0]].type == "X":
-                #sto = self.get_corners(self.map[i[1]][i[0]])
-                print("Blocked!")
-                break
+                return False
+        return True
 
+    def build_corner_graph(self):
+        for i, v in enumerate(self.cornerGraph):
+            for j, w in enumerate(self.cornerGraph[i+1:]):
+                if self.find_path(v.loc[0], v.loc[1], w.loc[0], w.loc[1]):
+                    if self.impObs[4]:
+                        self.draw_line(v.loc[0], v.loc[1], w.loc[0], w.loc[1])
+                    dis = math.sqrt((v.loc[0]-w.loc[0])**2 + (v.loc[1]-w.loc[1])**2)
+                    v.add_path(j+i+1, dis)
+                    w.add_path(i, dis)
+
+    def draw_graph_connections(self):
+        for i in self.cornerGraph:
+            print(i.connections)
+            for j in i.connections:
+                self.draw_line(self.cornerGraph[j[0]].loc[0], self.cornerGraph[j[0]].loc[1], i.loc[0], i.loc[1])
 
     def get_corners_lite(self):
         for i in self.wallList:
             sto = self.map[i[1]][i[0]]
             if self.map[sto.dimen[1]-1][sto.dimen[0]-1].type == 0:
-                self.mapCorners.append((sto.dimen[0]-1, sto.dimen[1]-1))
+                self.cornerGraph.append(Graph(len(self.cornerGraph), sto.dimen[0] - 1, sto.dimen[1] - 1))
             if self.map[sto.dimen[1]-1][sto.dimen[2]+1].type == 0:
-                self.mapCorners.append((sto.dimen[2] + 1, sto.dimen[1] - 1))
+                self.cornerGraph.append(Graph(len(self.cornerGraph), sto.dimen[2] + 1, sto.dimen[1] - 1))
             if self.map[sto.dimen[3]+1][sto.dimen[0]-1].type == 0:
-                self.mapCorners.append((sto.dimen[0] - 1, sto.dimen[3] + 1))
+                self.cornerGraph.append(Graph(len(self.cornerGraph), sto.dimen[0] - 1, sto.dimen[3] + 1))
             if self.map[sto.dimen[3]+1][sto.dimen[2]+1].type == 0:
-                self.mapCorners.append((sto.dimen[2] + 1, sto.dimen[3] + 1))
+                self.cornerGraph.append(Graph(len(self.cornerGraph), sto.dimen[2] + 1, sto.dimen[3] + 1))
+
+    def graph_traverse(self, i, o, dist, path):
+        path.append(i)
+        if path[-1] == o:
+            return dist, path
+        aves = []
+        for x in self.cornerGraph[i].connections:
+            if x[0] not in path:
+                sto = self.graph_traverse(x[0], o, dist-x[1], (path[:]))
+                if sto != None:
+                    aves.append(sto)
+        if len(aves):
+            champ = aves[0]
+            for y in aves:
+                if max(y[0], champ[0]) == y[0]:
+                    champ = y
+            return champ
 
 
     def highlight_path(self, lis):
@@ -228,10 +296,25 @@ class CombatMap:
         sto = len(self.objects)
         for y in range(min(y1, y2), max(y1, y2)+1):
             for x in range(min(x1, x2), max(x1, x2)+1):
-                self.map[y][x] = Wall(sto, x, y, min(x1, x2), min(y1,y2), max(x1,x2), max(y1,y2))
+                self.map[y][x] = Wall(sto, x, y, min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
         self.objects.append(self.canvas.create_rectangle(x1*mapCons+spacing, y1*mapCons+spacing,
                                                          (x2*mapCons)+mapCons-spacing, (y2*mapCons)+mapCons-spacing,
                                                          fill=self.colorDict[1]))
+
+    def move_object(self, gx, gy):
+        # move the 2nd object class
+        self.map[gy][gx].loc = [self.sel.loc[0], self.sel.loc[1]]
+        self.map[self.sel.loc[1]][self.sel.loc[0]] = self.map[gy][gx]
+
+        # move object representation
+        self.canvas.move(self.objects[self.sel.obInd],
+                         (gx - self.sel.loc[0]) * mapCons,
+                         (gy - self.sel.loc[1]) * mapCons)
+
+        # move 1st object class
+        self.sel.loc = [gx, gy]
+        self.map[gy][gx] = self.sel
+        self.sel = 0
 
     def select(self, event):
         print("X: " + str(event.x) + " Y: " + str(event.y))
@@ -239,28 +322,22 @@ class CombatMap:
         print("X: " + str(gridPos[1]) + " Y: " + str(gridPos[0]))
 
         square = self.map[gridPos[1]][gridPos[0]]
-
         if self.sel != 0 and square.type == 0 and self.impObs[0] == 0:
-            # move class
-            square.loc = [self.sel.loc[0], self.sel.loc[1]]
-            self.map[self.sel.loc[1]][self.sel.loc[0]] = square
+            # self.find_player_path(gridPos[0], gridPos[1])
+            self.attach_node(gridPos[0], gridPos[1])
+            l = len(self.cornerGraph)-2
+            print(self.graph_traverse(l, l+1, self.sel.speed, []))
 
-            # move object representation
-            print("GP: " + str(gridPos[0]) + " loc: " + str(self.sel.loc[0]))
-            self.canvas.move(self.objects[self.sel.obInd],
-                             (gridPos[0] - self.sel.loc[0]) * mapCons,
-                             (gridPos[1] - self.sel.loc[1]) * mapCons)
-
-            # update class
-            self.sel.loc = gridPos
-            self.map[gridPos[1]][gridPos[0]] = self.sel
-            self.sel = 0
-            # hide move line again
-            self.canvas.coords(self.objects[self.impObs[1]], 0, 0, 0, 0)
+            self.clean_graph_end()
+            self.clean_graph_end()
+            print(len(self.cornerGraph))
+            self.move_object(gridPos[0], gridPos[1])
             self.clean_path()
+            self.se_nodes_built = False
             print("moved")
         elif square.type != 0 and square.type != "X":
             self.sel = self.map[gridPos[1]][gridPos[0]]
+            self.attach_node(gridPos[0], gridPos[1])
             print("selected")
         else:
             print(square.type)
@@ -275,13 +352,14 @@ class CombatMap:
                 self.selLoc[0] = qx
                 self.selLoc[1] = qy
                 self.clean_path()
-                self.find_path(self.sel.loc[0], self.sel.loc[1], qx, qy, self.sel.speed)
-
+                #self.find_player_path(qx, qy, self.sel.speed)
 
     def leave(self, event):
         self.impObs[2] = 1
 
     def printOut(self, event):
+        self.draw_graph_connections()
+        print(len(self.cornerGraph))
         for x in self.map:
             for y in x:
                 print(y.type, end=" ")
@@ -333,10 +411,21 @@ class CombatMap:
 """
 
 
+class Graph:
+    def add_path(self, ind, dist):
+        self.connections.append((ind, dist))
+
+    def __init__(self, ind, x, y):
+        self.index = ind
+        self.connections = []
+        self.loc = [x, y]
+
+
 class object:
     def __init__(self, x, y, t=0):
         self.type = t
         self.loc = [x, y]
+
 
 class Wall(object):
     def __init__(self, ind, x, y, x1, y1, x2, y2):
@@ -362,7 +451,10 @@ class Character(object):
 
 """
 Wall tests:
-    playarea.add_char(1, 4, 1, 6)
+    playarea.add_wall(4, 4, 4, 4)
+    
+    
+    
     playarea.add_wall(3, 4, 4, 4)
     playarea.add_wall(5, 3, 5, 5)
     playarea.add_wall(4, 6, 4, 6)
@@ -377,8 +469,8 @@ def main():
     playarea.add_wall(5, 3, 5, 5)
     playarea.add_wall(4, 6, 4, 6)
     playarea.get_corners_lite()
-    print(playarea.wallList)
-    playarea.highlight_path(playarea.mapCorners)
+    playarea.build_corner_graph()
+    #playarea.clean_path()
 
     playarea.add_char(1, 4, 1, 6)
     print("total objects: " + str(len(playarea.objects)))
@@ -404,11 +496,15 @@ def main():
 
 
 main()
+
+
+
 """
 Timing tests:
 this area isn't supposed to be in the end result and more to
 focus on the timing of certain fuctions
 """
+
 def canvas_test():
     can_w = 400
     can_h = 400
@@ -419,17 +515,13 @@ def canvas_test():
         x2, y2 = (event.x + 1), (event.y + 1)
         canvas.create_oval(x1, y1, x2, y2, fill=python_green)
 
-
-    #def scroll_bar(event):
-
-
     master = Tk()
     canvas = Canvas(master,
-                 width = can_w,
-                 height = can_h)
+                    width=can_w,
+                    height=can_h)
 
 
-    canvas.pack(expand = YES, fill = BOTH)
+    canvas.pack(expand=YES, fill=BOTH)
     canvas.bind("<B1-Motion>", paint)
 
     message = Label(master, text="Press and Drag the mouse to draw")
@@ -448,3 +540,33 @@ def timing():
     end = time.time()
     print(end - start)
 
+"""
+Special thanks to unutbu who gave me the following code so I can figure
+out how to do a full screen mode of my project
+link to thread: https://stackoverflow.com/questions/7966119/display-fullscreen-mode-on-tkinter
+"""
+"""
+class FullScreenApp(object):
+    def __init__(self, master, **kwargs):
+        self.master=master
+        self.fullscreen = False
+        pad=3
+        self._geom='200x200+0+0'
+        master.geometry("{0}x{1}+0+0".format(
+            master.winfo_screenwidth()-pad, master.winfo_screenheight()-pad))
+        master.bind('<Escape>',self.toggle_geom)
+    def toggle_geom(self,event):
+        geom=self.master.winfo_geometry()
+        print(geom,self._geom)
+        self.master.geometry(self._geom)
+        self._geom=geom
+    def toggle_fs(self,event):
+        self.fullscreen = not self.fullscreen
+        self.master.attributes("-fullscreen", self.fullscreen)
+
+
+root=Tk()
+app=FullScreenApp(root)
+root.bind("<ButtonRelease-1>", app.toggle_fs)
+root.mainloop()
+"""

@@ -218,12 +218,11 @@ class CombatMap:
 
     def draw_node_path(self, x, y, ref):
         isoverbudget = 2
-        print(self.selPath[1])
+
         for i in range(len(self.selPath[1][:-1])):
-            print(i)
-            n1 = self.cornerGraph[i]
-            n2 = self.cornerGraph[i+1]
-            if i == ref:
+            n1 = self.cornerGraph[self.selPath[1][i]]
+            n2 = self.cornerGraph[self.selPath[1][i+1]]
+            if self.selPath[1][i] == ref:
                 self.draw_line(n1.loc[0], n1.loc[1], x, y, isoverbudget)
                 isoverbudget = 3
                 self.draw_line(x, y, n2.loc[0], n2.loc[1], isoverbudget)
@@ -371,6 +370,8 @@ class CombatMap:
         l = len(self.cornerGraph) - 2
         self.graphDist = [None] * (l + 2)
         self.selPath = self.graph_traverse(l, l + 1, self.sel.speed, [])
+        if self.selPath is None:
+            return None
         if self.selPath[0] >= 0:
             return self.selPath[0], self.cornerGraph[self.selPath[1][-1]].loc[0], self.cornerGraph[self.selPath[1][-1]].loc[1], -1
         else:
@@ -380,17 +381,23 @@ class CombatMap:
 
     def select(self, event):
         gridPos = [event.x//mapCons, event.y//mapCons]
-        print("X: " + str(gridPos[1]) + " Y: " + str(gridPos[0]))
+        print("X: " + str(gridPos[0]) + " Y: " + str(gridPos[1]))
 
         square = self.map[gridPos[1]][gridPos[0]]
         if self.sel != 0 and square.type == 0 and self.impObs[0] == 0:
             self.move_object(self.selEnd[0], self.selEnd[1])
+            self.clean_graph_end()
+            self.clean_graph_end()
+            self.end_node_built = False
+            self.clean_path()
+
         elif square.type != 0 and square.type != "X":
             self.sel = self.map[gridPos[1]][gridPos[0]]
+            print("attaching node to: ", gridPos)
             self.attach_node(gridPos[0], gridPos[1])
             print("selected")
         else:
-            print(square.type)
+            print("WARNING: ", square.type)
 
     def motion(self, event):
         #should we worry about the mouse moving?
@@ -407,17 +414,17 @@ class CombatMap:
                 self.end_node_built = True
                 self.clean_path()
                 sto = self.movement()
-                self.selEnd = sto[1], sto[2]
-                #print("Remaining movement: ", sto[0])
-                self.draw_node_path(sto[1], sto[2], sto[3])
-
-                #self.find_player_path(qx, qy, self.sel.speed)
+                if sto is not None:
+                    self.selEnd = sto[1], sto[2]
+                    #print("Remaining movement: ", sto[0])
+                    self.draw_node_path(sto[1], sto[2], sto[3])
 
     def leave(self, event):
         self.impObs[2] = 1
 
     def printOut(self, event):
-        #self.draw_graph_connections()
+        self.clean_path()
+        self.draw_graph_connections()
         print(self.cornerGraph[0].loc[0],self.cornerGraph[0].loc[1],self.cornerGraph[2].loc[0],self.cornerGraph[2].loc[1])
         for x in self.map:
             for y in x:

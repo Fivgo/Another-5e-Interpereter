@@ -48,6 +48,7 @@ class CombatMap:
         self.size[0] = x
         self.size[1] = y
         self.master = Tk()
+        self.master.title("Another 5e Interpreter")
         self.canvas = Canvas(self.master,
                              width=mapCons * x,
                              height=mapCons * y)
@@ -218,7 +219,6 @@ class CombatMap:
 
     def draw_node_path(self, x, y, ref):
         isoverbudget = 2
-
         for i in range(len(self.selPath[1][:-1])):
             n1 = self.cornerGraph[self.selPath[1][i]]
             n2 = self.cornerGraph[self.selPath[1][i+1]]
@@ -343,6 +343,10 @@ class CombatMap:
                 return deficit, self.cornerGraph[self.selPath[1][-2-i]], self.cornerGraph[self.selPath[1][-1-i]], self.selPath[1][-2-i]
         print("THIS ISNT SUPPOSED TO BE HERE!")
 
+
+    """
+    This isn't good enough. Doesn't use all potential movement to get to goal
+    """
     def meet_halfway(self, rem, node1, node2):
         #Checks to see if there is any distance left to travel.
         if rem >= 1:
@@ -366,6 +370,49 @@ class CombatMap:
         else:
             return rem, node1.loc[0], node1.loc[1]
 
+    """
+    Now this gets to the right grid square 99% of the time from what I can tell...
+    The only issue is that the path it takes there isn't always correct around corners.
+    """
+    def meet_halfway_v2(self, rem, node1, node2):
+        if rem >= 1:
+            dx = node2.loc[0] - node1.loc[0]
+            dy = node2.loc[1] - node1.loc[1]
+            h = math.sqrt(dx ** 2 + dy ** 2)
+            half = (rem * dx / h, rem * dy / h)
+            fha = (math.floor(half[0]) + node1.loc[0], math.floor(half[1]) + node1.loc[1])
+            cha = (math.ceil(half[0]) + node1.loc[0], math.ceil(half[1]) + node1.loc[1])
+            champ = None
+            qloc = None
+            if self.impObs[4]:
+                self.highlight_path([(fha[0],fha[1]), (cha[0], cha[1]), (cha[0], fha[1]), (fha[0],cha[1])])
+            if (fha[0] - node1.loc[0]) ** 2 + (fha[1] - node1.loc[1]) ** 2 <= rem**2:
+                if champ is None:
+                    champ = self.dist_between(node2.loc[0], fha[0], node2.loc[1], fha[1])
+                    gloc = fha[0], fha[1]
+            if (cha[0] - node1.loc[0]) ** 2 + (cha[1] - node1.loc[1]) ** 2 <= rem**2:
+                temp = self.dist_between(node2.loc[0], cha[0], node2.loc[1], cha[1])
+                if champ is None or champ > temp:
+                    champ = temp
+                    gloc = cha[0], cha[1]
+            if (cha[0] - node1.loc[0]) ** 2 + (fha[1] - node1.loc[1]) ** 2 <= rem**2:
+                temp = self.dist_between(node2.loc[0], cha[0], node2.loc[1], fha[1])
+                if champ is None or champ > temp:
+                    champ = temp
+                    gloc = cha[0], fha[1]
+            if (fha[0] - node1.loc[0]) ** 2 + (cha[1] - node1.loc[1]) ** 2 <= rem**2:
+                temp = self.dist_between(node2.loc[0], fha[0], node2.loc[1], cha[1])
+                if champ is None or champ > temp:
+                    champ = temp
+                    gloc = fha[0], cha[1]
+            #print("REMAINDER: ", rem - self.dist_between(node1.loc[0], node1.loc[1], gloc[0], gloc[1]))
+            return rem - self.dist_between(node1.loc[0], node1.loc[1], gloc[0], gloc[1]), gloc[0], gloc[1]
+        else:
+            return rem, node1.loc[0], node1.loc[1]
+
+    def dist_between(self, x1, y1, x2, y2):
+        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
     def movement(self):
         l = len(self.cornerGraph) - 2
         self.graphDist = [None] * (l + 2)
@@ -375,8 +422,11 @@ class CombatMap:
         if self.selPath[0] >= 0:
             return self.selPath[0], self.cornerGraph[self.selPath[1][-1]].loc[0], self.cornerGraph[self.selPath[1][-1]].loc[1], -1
         else:
+            #tup is made of the remaining length to use, the last node it can reach
+            #the next node it cant, and the index of the last node it can reach in cornerGraph
             tup = self.track_path()
-            sto = self.meet_halfway(tup[0], tup[1], tup[2])
+            #stow remainder, the x cord, and y cord
+            sto = self.meet_halfway_v2(tup[0], tup[1], tup[2])
         return sto[0], sto[1], sto[2], tup[3]
 
     def select(self, event):
@@ -385,7 +435,8 @@ class CombatMap:
 
         square = self.map[gridPos[1]][gridPos[0]]
         if self.sel != 0 and square.type == 0 and self.impObs[0] == 0:
-            self.move_object(self.selEnd[0], self.selEnd[1])
+            self.sel.speed = self.selEnd[0]
+            self.move_object(self.selEnd[1], self.selEnd[2])
             self.clean_graph_end()
             self.clean_graph_end()
             self.end_node_built = False
@@ -413,11 +464,23 @@ class CombatMap:
                 self.attach_node(qx, qy)
                 self.end_node_built = True
                 self.clean_path()
-                sto = self.movement()
-                if sto is not None:
-                    self.selEnd = sto[1], sto[2]
-                    #print("Remaining movement: ", sto[0])
-                    self.draw_node_path(sto[1], sto[2], sto[3])
+                self.selEnd = self.movement()
+                if self.selEnd is not None:
+                    #print("Remaining movement: ", self.selEnd[0])
+                    self.draw_node_path(self.selEnd[1], self.selEnd[2], self.selEnd[3])
+
+    def restore(self, event):
+        print("ping")
+        if self.sel != 0:
+            self.sel.set_speed()
+            self.motion(event)
+
+    def boost(self, event):
+        print("ping")
+        if self.sel != 0:
+            self.sel.boost_speed(self.sel.basespeed)
+            self.motion(event)
+
 
     def leave(self, event):
         self.impObs[2] = 1
@@ -443,6 +506,9 @@ class CombatMap:
         self.canvas.bind("<Button-2>", self.leave)
         self.canvas.bind("<Button-3>", self.printOut)
         self.canvas.bind("<Motion>", self.motion)
+        self.master.bind("r", self.restore)
+        self.master.bind("b", self.boost)
+
 
 
 """
@@ -504,10 +570,18 @@ class Character(object):
 
     def __init__(self, ind, x, y, t=1, s=6):
         self.speed = s
+        self.basespeed = s
         self.obInd = ind
         super().__init__(x, y, t)
         #self.printOut()
 
+    def boost_speed(self, num):
+        self.speed += num
+        print("speed has been boosted")
+
+    def set_speed(self):
+        self.speed = self.basespeed
+        print("speed has been reset")
 
     def printOut(self):
         print("This character's speed is: " + str(self.speed))
@@ -520,20 +594,36 @@ Wall tests:
     playarea.add_wall(4, 4, 4, 4)
     
     
-    
+    obstacle 1:
     playarea.add_wall(3, 4, 4, 4)
     playarea.add_wall(5, 3, 5, 5)
     playarea.add_wall(4, 6, 4, 6)
+    
+    obstacle 2:
+    playarea.add_wall(2, 8, 9, 8)
+    playarea.add_wall(2, 8, 8, 8)
+    playarea.add_wall(5, 9, 5, 12)
+    playarea.add_wall(3, 10, 3, 13)
+    playarea.add_wall(7, 10, 7, 13)
+    playarea.add_wall(2, 14, 8, 14)
 """
 
 def main():
     width = 10
-    height = 15
+    height = 16
     playarea = CombatMap(width, height)
 
     playarea.add_wall(3, 4, 4, 4)
     playarea.add_wall(5, 3, 5, 5)
     playarea.add_wall(4, 6, 4, 6)
+
+    playarea.add_wall(2, 8, 9, 8)
+    playarea.add_wall(2, 8, 8, 8)
+    playarea.add_wall(5, 9, 5, 12)
+    playarea.add_wall(3, 10, 3, 13)
+    playarea.add_wall(7, 10, 7, 13)
+    playarea.add_wall(2, 14, 8, 14)
+
     playarea.get_corners_lite()
     playarea.build_corner_graph()
     #playarea.clean_path()

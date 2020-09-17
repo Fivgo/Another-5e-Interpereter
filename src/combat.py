@@ -9,7 +9,6 @@ mapCons = 50
 mapConsCen = mapCons//2
 spacing = mapCons//10+2
 
-
 class CombatMap:
     colorDict = {
         0: "snow",
@@ -24,7 +23,6 @@ class CombatMap:
 
 
 
-    selLoc = [0, 0]
     #[0] : out of range flag [1]: select line object OBSO [2]: tripwire [3]: debug pathH [4]: graph paths
     impObs = [0, 0, 0, 0, 0]
     size = [5, 5]
@@ -34,9 +32,12 @@ class CombatMap:
 
 
     wallList = []
-    mapCorners = []
     cornerGraph = []
-    se_nodes_built = False
+    graphDist = []
+    selLoc = [0, 0]
+    selPath = None
+    selEnd = None
+    end_node_built = False
 
     pathLine = []
     pathHighlight = []
@@ -210,10 +211,24 @@ class CombatMap:
                 v.add_path(pos, dis)
         #print(self.cornerGraph[pos].connections)
 
-    def draw_line(self, x1, y1, x2, y2):
+    def draw_line(self, x1, y1, x2, y2, m=2):
         self.pathLine.append(self.canvas.create_line(x1 * mapCons + mapConsCen, y1 * mapCons + mapConsCen,
                                                      x2 * mapCons + mapConsCen, y2 * mapCons + mapConsCen,
-                                                     width=3, fill=self.colorDict[2]))
+                                                     width=3, fill=self.colorDict[m]))
+
+    def draw_node_path(self, x, y, ref):
+        isoverbudget = 2
+        print(self.selPath[1])
+        for i in range(len(self.selPath[1][:-1])):
+            print(i)
+            n1 = self.cornerGraph[i]
+            n2 = self.cornerGraph[i+1]
+            if i == ref:
+                self.draw_line(n1.loc[0], n1.loc[1], x, y, isoverbudget)
+                isoverbudget = 3
+                self.draw_line(x, y, n2.loc[0], n2.loc[1], isoverbudget)
+            else:
+                self.draw_line(n1.loc[0], n1.loc[1], n2.loc[0], n2.loc[1], isoverbudget)
 
     def get_conflicts(self, lis):
         sto = []
@@ -256,9 +271,11 @@ class CombatMap:
             return dist, path
         aves = []
         for x in self.cornerGraph[i].connections:
-            if x[0] not in path:
-                sto = self.graph_traverse(x[0], o, dist-x[1], (path[:]))
-                if sto != None:
+            tick = dist-x[1]
+            if (self.graphDist[x[0]] is None or max(tick, self.graphDist[x[0]]) == tick) and x[0] not in path:
+                self.graphDist[x[0]] = tick
+                sto = self.graph_traverse(x[0], o, tick, (path[:]))
+                if sto is not None:
                     aves.append(sto)
         if len(aves):
             champ = aves[0]
@@ -266,7 +283,6 @@ class CombatMap:
                 if max(y[0], champ[0]) == y[0]:
                     champ = y
             return champ
-
 
     def highlight_path(self, lis):
         for i in lis:
@@ -301,40 +317,74 @@ class CombatMap:
                                                          (x2*mapCons)+mapCons-spacing, (y2*mapCons)+mapCons-spacing,
                                                          fill=self.colorDict[1]))
 
-    def move_object(self, gx, gy):
+    def move_object(self, x, y):
         # move the 2nd object class
-        self.map[gy][gx].loc = [self.sel.loc[0], self.sel.loc[1]]
-        self.map[self.sel.loc[1]][self.sel.loc[0]] = self.map[gy][gx]
+        self.map[y][x].loc = [self.sel.loc[0], self.sel.loc[1]]
+        self.map[self.sel.loc[1]][self.sel.loc[0]] = self.map[y][x]
 
         # move object representation
         self.canvas.move(self.objects[self.sel.obInd],
-                         (gx - self.sel.loc[0]) * mapCons,
-                         (gy - self.sel.loc[1]) * mapCons)
+                         (x - self.sel.loc[0]) * mapCons,
+                         (y - self.sel.loc[1]) * mapCons)
 
         # move 1st object class
-        self.sel.loc = [gx, gy]
-        self.map[gy][gx] = self.sel
+        self.sel.loc = [x, y]
+        self.map[y][x] = self.sel
         self.sel = 0
 
+    def track_path(self):
+        print(self.selPath)
+        deficit = self.selPath[0]
+        for i in range(len(self.selPath[1][:-1])):
+            for j in self.cornerGraph[self.selPath[1][-1-i]].connections:
+                if j[0] == self.selPath[1][-2-i]:
+                    deficit += j[1]
+                    break
+            if deficit >= 0:
+                return deficit, self.cornerGraph[self.selPath[1][-2-i]], self.cornerGraph[self.selPath[1][-1-i]], self.selPath[1][-2-i]
+        print("THIS ISNT SUPPOSED TO BE HERE!")
+
+    def meet_halfway(self, rem, node1, node2):
+        #Checks to see if there is any distance left to travel.
+        if rem >= 1:
+            dx = node2.loc[0] - node1.loc[0]
+            dy = node2.loc[1] - node1.loc[1]
+            h = math.sqrt(dx**2 + dy**2)
+            half = [rem*dx/h, rem*dy/h]
+            thalf = [math.trunc(half[0]), math.trunc(half[1])]
+            if (half[0] % 1) ** 2 + (half[1] % 1) ** 2 < 1:
+                return rem - math.sqrt(thalf[0]**2 + thalf[1]**2), thalf[0]+node1.loc[0], thalf[1]+node1.loc[1]
+            elif abs(dy) > abs(dx):
+                yf = 1
+                if dy < 0:
+                    yf = -1
+                return rem - math.sqrt(thalf[0]**2 + (thalf[1]+1)**2), thalf[0] + node1.loc[0], thalf[1] + node1.loc[1] + yf
+            else:
+                xf = 1
+                if dx < 0:
+                    xf = -1
+                return rem - math.sqrt((thalf[0] + 1) ** 2 + thalf[1] ** 2), thalf[0] + node1.loc[0] + xf, thalf[1] + node1.loc[1]
+        else:
+            return rem, node1.loc[0], node1.loc[1]
+
+    def movement(self):
+        l = len(self.cornerGraph) - 2
+        self.graphDist = [None] * (l + 2)
+        self.selPath = self.graph_traverse(l, l + 1, self.sel.speed, [])
+        if self.selPath[0] >= 0:
+            return self.selPath[0], self.cornerGraph[self.selPath[1][-1]].loc[0], self.cornerGraph[self.selPath[1][-1]].loc[1], -1
+        else:
+            tup = self.track_path()
+            sto = self.meet_halfway(tup[0], tup[1], tup[2])
+        return sto[0], sto[1], sto[2], tup[3]
+
     def select(self, event):
-        print("X: " + str(event.x) + " Y: " + str(event.y))
         gridPos = [event.x//mapCons, event.y//mapCons]
         print("X: " + str(gridPos[1]) + " Y: " + str(gridPos[0]))
 
         square = self.map[gridPos[1]][gridPos[0]]
         if self.sel != 0 and square.type == 0 and self.impObs[0] == 0:
-            # self.find_player_path(gridPos[0], gridPos[1])
-            self.attach_node(gridPos[0], gridPos[1])
-            l = len(self.cornerGraph)-2
-            print(self.graph_traverse(l, l+1, self.sel.speed, []))
-
-            self.clean_graph_end()
-            self.clean_graph_end()
-            print(len(self.cornerGraph))
-            self.move_object(gridPos[0], gridPos[1])
-            self.clean_path()
-            self.se_nodes_built = False
-            print("moved")
+            self.move_object(self.selEnd[0], self.selEnd[1])
         elif square.type != 0 and square.type != "X":
             self.sel = self.map[gridPos[1]][gridPos[0]]
             self.attach_node(gridPos[0], gridPos[1])
@@ -349,17 +399,26 @@ class CombatMap:
             qy = event.y//mapCons
             #if so, has it made a relevant movement?
             if (qx != self.selLoc[0] or qy != self.selLoc[1]) and qx < self.size[0] and qy < self.size[1]:
+                if self.end_node_built:
+                    self.clean_graph_end()
                 self.selLoc[0] = qx
                 self.selLoc[1] = qy
+                self.attach_node(qx, qy)
+                self.end_node_built = True
                 self.clean_path()
+                sto = self.movement()
+                self.selEnd = sto[1], sto[2]
+                #print("Remaining movement: ", sto[0])
+                self.draw_node_path(sto[1], sto[2], sto[3])
+
                 #self.find_player_path(qx, qy, self.sel.speed)
 
     def leave(self, event):
         self.impObs[2] = 1
 
     def printOut(self, event):
-        self.draw_graph_connections()
-        print(len(self.cornerGraph))
+        #self.draw_graph_connections()
+        print(self.cornerGraph[0].loc[0],self.cornerGraph[0].loc[1],self.cornerGraph[2].loc[0],self.cornerGraph[2].loc[1])
         for x in self.map:
             for y in x:
                 print(y.type, end=" ")
@@ -472,7 +531,7 @@ def main():
     playarea.build_corner_graph()
     #playarea.clean_path()
 
-    playarea.add_char(1, 4, 1, 6)
+    playarea.add_char(1, 4, 1, 8)
     print("total objects: " + str(len(playarea.objects)))
 
 

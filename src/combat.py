@@ -5,9 +5,12 @@ import time
 from tkinter import *
 import math
 
-mapCons = 50
+
+mapCons = 100
 mapConsCen = mapCons//2
 spacing = mapCons//10+2
+
+
 
 class CombatMap:
     colorDict = {
@@ -19,21 +22,20 @@ class CombatMap:
         5: "blue",
         6: "gray12"
     }
-    mathList = [.707, .5]
-
-
 
     #[0] : out of range flag [1]: select line object OBSO [2]: tripwire [3]: debug pathH [4]: graph paths
     impObs = [0, 0, 0, 0, 0]
     size = [5, 5]
+    offset = [0, 0]
     sel = 0
     map = []
     objects = []
-
-
     wallList = []
+
+
     cornerGraph = []
     graphDist = []
+    bestprice = None
     selLoc = [0, 0]
     selPath = None
     selEnd = None
@@ -43,7 +45,7 @@ class CombatMap:
     pathHighlight = []
     pathHardpoints = []
 
-
+#______ALL V0.010 Components______
     def draw_map(self, x, y):
         self.size[0] = x
         self.size[1] = y
@@ -52,8 +54,8 @@ class CombatMap:
         self.canvas = Canvas(self.master,
                              width=mapCons * x,
                              height=mapCons * y)
-        self.canvas.pack()
 
+        self.canvas.pack()
         """
         draws lines onto canvas and stores them into the objects list for referencing
         """
@@ -68,6 +70,41 @@ class CombatMap:
                                                         mapCons * x, i * mapCons,
                                                         fill=self.colorDict[1]))
 
+    def draw_line(self, x1, y1, x2, y2, m=2):
+        self.pathLine.append(self.canvas.create_line(x1 * mapCons + mapConsCen + self.offset[0], y1 * mapCons + mapConsCen + self.offset[1],
+                                                     x2 * mapCons + mapConsCen + self.offset[0], y2 * mapCons + mapConsCen + self.offset[1],
+                                                     width=3, fill=self.colorDict[m]))
+
+    def draw_node_path(self, x, y, ref):
+        isoverbudget = 2
+        for i in range(len(self.selPath[1][:-1])):
+            n1 = self.cornerGraph[self.selPath[1][i]]
+            n2 = self.cornerGraph[self.selPath[1][i + 1]]
+            if self.selPath[1][i] == ref:
+                self.draw_line(n1.loc[0], n1.loc[1], x, y, isoverbudget)
+                isoverbudget = 3
+                self.draw_line(x, y, n2.loc[0], n2.loc[1], isoverbudget)
+            else:
+                self.draw_line(n1.loc[0], n1.loc[1], n2.loc[0], n2.loc[1], isoverbudget)
+
+    def draw_highlight_path(self, lis):
+        for i in lis:
+            self.pathHighlight.append(self.canvas.create_rectangle(i[0] * mapCons,
+                                                                   i[1] * mapCons,
+                                                                   i[0] * mapCons + mapCons,
+                                                                   i[1] * mapCons + mapCons,
+                                                                   fill=self.colorDict[3],
+                                                                   stipple=self.colorDict[6]))
+
+    def draw_graph_connections(self):
+        for i in self.cornerGraph:
+            print(i.connections)
+            for j in i.connections:
+                self.draw_line(self.cornerGraph[j[0]].loc[0], self.cornerGraph[j[0]].loc[1], i.loc[0], i.loc[1])
+
+    def dist_between(self, x1, y1, x2, y2):
+        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
     def clean_path(self):
         for i in self.pathHighlight:
             self.canvas.delete(i)
@@ -79,108 +116,6 @@ class CombatMap:
             self.canvas.delete(i)
         del self.pathLine[:]
 
-    def find_path(self, x1, y1, x2, y2, w=.5):
-        path = set()
-        high = {(x1, y1)}
-
-        dy = y2 - y1
-        dx = x2 - x1
-        """
-        DECOMISSIONED FOR NOW<<<<
-        if dx ** 2 + dy ** 2 > dist ** 2 and dist != 0:
-            self.canvas.itemconfig(self.pathLine[0], fill=self.colorDict[3])
-        else:
-            self.canvas.itemconfig(self.pathLine[0], fill=self.colorDict[2])
-        """
-        if x1 == x2:
-            for i in range(y1, y2+1):
-                high.add((x1, i))
-            for i in range(y2, y1+1):
-                high.add((x1, i))
-        elif y1 == y2:
-            for i in range(x1, x2+1):
-                high.add((i, y1))
-            for i in range(x2, x1+1):
-                high.add((i, y1))
-        else:
-            """
-            #Okay, I'm a bit proud of this next part
-            resolution = .5
-            dy = y2 - y1
-            dx = x2 - x1
-            m = dy/dx
-            flip = 1
-            if x2 < x1:
-                flip = -1
-            print("slope: " + str(m))
-            xtrav = math.sqrt(1+m**2)/(1+m**2)
-            ytrav = m*xtrav
-
-
-            for i in range(0, int(math.sqrt(dx**2+dy**2)/resolution)):
-                x1 += xtrav*resolution*flip
-                y1 += ytrav*resolution*flip
-                if self.impObs[3]:
-                    
-                    
-                    version 1:
-                    self.pathHardpoints.append(self.canvas.create_rectangle(x1*mapCons+mapConsCen-2,
-                                                                            y1*mapCons+mapConsCen-2,
-                                                                            x1*mapCons+2+mapConsCen,
-                                                                            y1*mapCons+2+mapConsCen,
-                                                                            fill=self.colorDict[4]))
-
-                    pivot = math.atan(m)
-                    self.pathHardpoints.append(self.canvas.create_line((x1+(math.cos(pivot+90))*self.mathList[1])*mapCons+mapConsCen,
-                                                                       (y1+(math.sin(pivot+90))*self.mathList[1])*mapCons+mapConsCen,
-                                                                       (x1+(math.cos(pivot-90))*self.mathList[1])*mapCons+mapConsCen,
-                                                                       (y1+(math.sin(pivot-90))*self.mathList[1])*mapCons+mapConsCen, fill=self.colorDict[3]))
-                cand = (round(x1), round(y1))
-                if path[-1] != cand:
-                    path.append(cand)
-            """
-            #version 2:
-
-            m = dy/dx
-            pivot = math.atan(m)+1.571
-
-            xf = 1
-            yf = 1
-            if dx < 0:
-                xf = -1
-            if dy < 0:
-                yf = -1
-
-            #This checks if there is enough space to check the full width of the object
-            if .5 < abs(m) < 2:
-                w *= 1.414
-            for i in range(abs(dy)):
-                path.add((((.5 + i) * yf) / m + x1, (.5 + i) * yf + y1))
-            for i in range(abs(dx)):
-                path.add(((.5 + i) * xf + x1, (.5 + i) * xf * m + y1))
-
-            # print("current path: " + str(path))
-            for i in path:
-                if self.impObs[3]:
-                    self.pathHardpoints.append(self.canvas.create_rectangle(i[0] * mapCons + mapConsCen - 2,
-                                                                            i[1] * mapCons + mapConsCen - 2,
-                                                                            i[0] * mapCons + 2 + mapConsCen,
-                                                                            i[1] * mapCons + 2 + mapConsCen,
-                                                                            fill=self.colorDict[4]))
-                    self.pathHardpoints.append(
-                            self.canvas.create_line((i[0] - math.cos(pivot)*w) * mapCons + mapConsCen,
-                                                    (i[1] - math.sin(pivot)*w) * mapCons + mapConsCen,
-                                                    (i[0] + math.cos(pivot)*w) * mapCons + mapConsCen,
-                                                    (i[1] + math.sin(pivot)*w) * mapCons + mapConsCen,
-                                                    fill=self.colorDict[3]))
-
-                high.add((round(i[0] - math.cos(pivot) * w), round(i[1] - math.sin(pivot) * w)))
-                high.add((round(i[0] + math.cos(pivot) * w), round(i[1] + math.sin(pivot) * w)))
-                high.add((round(i[0] + (math.cos(math.atan(m)) * w) * xf),
-                          round(i[1] + (math.sin(math.atan(m)) * w) * xf)))
-        if self.impObs[3]:
-            self.highlight_path(high)
-        return self.get_conflicts(high)
     """
     Obsolete
     def find_player_path(self, x2, y2, sp=5):
@@ -212,25 +147,9 @@ class CombatMap:
                 v.add_path(pos, dis)
         #print(self.cornerGraph[pos].connections)
 
-    def draw_line(self, x1, y1, x2, y2, m=2):
-        self.pathLine.append(self.canvas.create_line(x1 * mapCons + mapConsCen, y1 * mapCons + mapConsCen,
-                                                     x2 * mapCons + mapConsCen, y2 * mapCons + mapConsCen,
-                                                     width=3, fill=self.colorDict[m]))
 
-    def draw_node_path(self, x, y, ref):
-        isoverbudget = 2
-        for i in range(len(self.selPath[1][:-1])):
-            n1 = self.cornerGraph[self.selPath[1][i]]
-            n2 = self.cornerGraph[self.selPath[1][i+1]]
-            if self.selPath[1][i] == ref:
-                self.draw_line(n1.loc[0], n1.loc[1], x, y, isoverbudget)
-                isoverbudget = 3
-                self.draw_line(x, y, n2.loc[0], n2.loc[1], isoverbudget)
-            else:
-                self.draw_line(n1.loc[0], n1.loc[1], n2.loc[0], n2.loc[1], isoverbudget)
 
     def get_conflicts(self, lis):
-        sto = []
         for i in lis:
             if self.map[i[1]][i[0]].type == "X":
                 return False
@@ -245,12 +164,6 @@ class CombatMap:
                     dis = math.sqrt((v.loc[0]-w.loc[0])**2 + (v.loc[1]-w.loc[1])**2)
                     v.add_path(j+i+1, dis)
                     w.add_path(i, dis)
-
-    def draw_graph_connections(self):
-        for i in self.cornerGraph:
-            print(i.connections)
-            for j in i.connections:
-                self.draw_line(self.cornerGraph[j[0]].loc[0], self.cornerGraph[j[0]].loc[1], i.loc[0], i.loc[1])
 
     def get_corners_lite(self):
         for i in self.wallList:
@@ -267,30 +180,128 @@ class CombatMap:
     def graph_traverse(self, i, o, dist, path):
         path.append(i)
         if path[-1] == o:
+            self.bestprice = dist
             return dist, path
         aves = []
-        for x in self.cornerGraph[i].connections:
-            tick = dist-x[1]
-            if (self.graphDist[x[0]] is None or max(tick, self.graphDist[x[0]]) == tick) and x[0] not in path:
-                self.graphDist[x[0]] = tick
-                sto = self.graph_traverse(x[0], o, tick, (path[:]))
-                if sto is not None:
-                    aves.append(sto)
-        if len(aves):
-            champ = aves[0]
-            for y in aves:
-                if max(y[0], champ[0]) == y[0]:
-                    champ = y
-            return champ
+        if self.bestprice is None or dist > self.bestprice:
+            for x in self.cornerGraph[i].connections:
+                tick = dist-x[1]
+                if (self.graphDist[x[0]] is None or max(tick, self.graphDist[x[0]]) == tick) and x[0] not in path:
+                    self.graphDist[x[0]] = tick
+                    sto = self.graph_traverse(x[0], o, tick, (path[:]))
+                    if sto is not None:
+                        aves.append(sto)
+            if len(aves):
+                champ = aves[0]
+                for y in aves:
+                    if max(y[0], champ[0]) == y[0]:
+                        champ = y
+                return champ
+        else:
+            return None
 
-    def highlight_path(self, lis):
-        for i in lis:
-            self.pathHighlight.append(self.canvas.create_rectangle(i[0] * mapCons,
-                                                                   i[1] * mapCons,
-                                                                   i[0] * mapCons + mapCons,
-                                                                   i[1] * mapCons + mapCons,
-                                                                   fill=self.colorDict[3],
-                                                                   stipple=self.colorDict[6]))
+    def find_path(self, x1, y1, x2, y2, w=.5):
+        path = set()
+        high = {(x1, y1)}
+
+        dy = y2 - y1
+        dx = x2 - x1
+        """
+        DECOMISSIONED FOR NOW<<<<
+        if dx ** 2 + dy ** 2 > dist ** 2 and dist != 0:
+            self.canvas.itemconfig(self.pathLine[0], fill=self.colorDict[3])
+        else:
+            self.canvas.itemconfig(self.pathLine[0], fill=self.colorDict[2])
+        """
+        if x1 == x2:
+            for i in range(y1, y2 + 1):
+                high.add((x1, i))
+            for i in range(y2, y1 + 1):
+                high.add((x1, i))
+        elif y1 == y2:
+            for i in range(x1, x2 + 1):
+                high.add((i, y1))
+            for i in range(x2, x1 + 1):
+                high.add((i, y1))
+        else:
+            """
+            #Okay, I'm a bit proud of this next part
+            resolution = .5
+            dy = y2 - y1
+            dx = x2 - x1
+            m = dy/dx
+            flip = 1
+            if x2 < x1:
+                flip = -1
+            print("slope: " + str(m))
+            xtrav = math.sqrt(1+m**2)/(1+m**2)
+            ytrav = m*xtrav
+
+
+            for i in range(0, int(math.sqrt(dx**2+dy**2)/resolution)):
+                x1 += xtrav*resolution*flip
+                y1 += ytrav*resolution*flip
+                if self.impObs[3]:
+
+
+                    version 1:
+                    self.pathHardpoints.append(self.canvas.create_rectangle(x1*mapCons+mapConsCen-2,
+                                                                            y1*mapCons+mapConsCen-2,
+                                                                            x1*mapCons+2+mapConsCen,
+                                                                            y1*mapCons+2+mapConsCen,
+                                                                            fill=self.colorDict[4]))
+
+                    pivot = math.atan(m)
+                    self.pathHardpoints.append(self.canvas.create_line((x1+(math.cos(pivot+90))*self.mathList[1])*mapCons+mapConsCen,
+                                                                       (y1+(math.sin(pivot+90))*self.mathList[1])*mapCons+mapConsCen,
+                                                                       (x1+(math.cos(pivot-90))*self.mathList[1])*mapCons+mapConsCen,
+                                                                       (y1+(math.sin(pivot-90))*self.mathList[1])*mapCons+mapConsCen, fill=self.colorDict[3]))
+                cand = (round(x1), round(y1))
+                if path[-1] != cand:
+                    path.append(cand)
+            """
+            # version 2:
+
+            m = dy / dx
+            pivot = math.atan(m) + 1.571
+
+            xf = 1
+            yf = 1
+            if dx < 0:
+                xf = -1
+            if dy < 0:
+                yf = -1
+
+            # This checks if there is enough space to check the full width of the object
+            if .5 < abs(m) < 2:
+                w *= 1.414
+            for i in range(abs(dy)):
+                path.add((((.5 + i) * yf) / m + x1, (.5 + i) * yf + y1))
+            for i in range(abs(dx)):
+                path.add(((.5 + i) * xf + x1, (.5 + i) * xf * m + y1))
+
+            # print("current path: " + str(path))
+            for i in path:
+                if self.impObs[3]:
+                    self.pathHardpoints.append(self.canvas.create_rectangle(i[0] * mapCons + mapConsCen - 2,
+                                                                            i[1] * mapCons + mapConsCen - 2,
+                                                                            i[0] * mapCons + 2 + mapConsCen,
+                                                                            i[1] * mapCons + 2 + mapConsCen,
+                                                                            fill=self.colorDict[4]))
+                    self.pathHardpoints.append(
+                        self.canvas.create_line((i[0] - math.cos(pivot) * w) * mapCons + mapConsCen,
+                                                (i[1] - math.sin(pivot) * w) * mapCons + mapConsCen,
+                                                (i[0] + math.cos(pivot) * w) * mapCons + mapConsCen,
+                                                (i[1] + math.sin(pivot) * w) * mapCons + mapConsCen,
+                                                fill=self.colorDict[3]))
+
+                high.add((round(i[0] - math.cos(pivot) * w), round(i[1] - math.sin(pivot) * w)))
+                high.add((round(i[0] + math.cos(pivot) * w), round(i[1] + math.sin(pivot) * w)))
+                high.add((round(i[0] + (math.cos(math.atan(m)) * w) * xf),
+                          round(i[1] + (math.sin(math.atan(m)) * w) * xf)))
+        if self.impObs[3]:
+            self.draw_highlight_path(high)
+        return self.get_conflicts(high)
 
     def add_char(self, x, y, t, s):
         """
@@ -343,10 +354,9 @@ class CombatMap:
                 return deficit, self.cornerGraph[self.selPath[1][-2-i]], self.cornerGraph[self.selPath[1][-1-i]], self.selPath[1][-2-i]
         print("THIS ISNT SUPPOSED TO BE HERE!")
 
-
     """
     This isn't good enough. Doesn't use all potential movement to get to goal
-    """
+    
     def meet_halfway(self, rem, node1, node2):
         #Checks to see if there is any distance left to travel.
         if rem >= 1:
@@ -369,6 +379,7 @@ class CombatMap:
                 return rem - math.sqrt((thalf[0] + 1) ** 2 + thalf[1] ** 2), thalf[0] + node1.loc[0] + xf, thalf[1] + node1.loc[1]
         else:
             return rem, node1.loc[0], node1.loc[1]
+    """
 
     """
     Now this gets to the right grid square 99% of the time from what I can tell...
@@ -385,7 +396,7 @@ class CombatMap:
             champ = None
             qloc = None
             if self.impObs[4]:
-                self.highlight_path([(fha[0],fha[1]), (cha[0], cha[1]), (cha[0], fha[1]), (fha[0],cha[1])])
+                self.draw_highlight_path([(fha[0],fha[1]), (cha[0], cha[1]), (cha[0], fha[1]), (fha[0],cha[1])])
             if (fha[0] - node1.loc[0]) ** 2 + (fha[1] - node1.loc[1]) ** 2 <= rem**2:
                 if champ is None:
                     champ = self.dist_between(node2.loc[0], fha[0], node2.loc[1], fha[1])
@@ -410,12 +421,10 @@ class CombatMap:
         else:
             return rem, node1.loc[0], node1.loc[1]
 
-    def dist_between(self, x1, y1, x2, y2):
-        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-
     def movement(self):
         l = len(self.cornerGraph) - 2
         self.graphDist = [None] * (l + 2)
+        self.bestprice = None
         self.selPath = self.graph_traverse(l, l + 1, self.sel.speed, [])
         if self.selPath is None:
             return None
@@ -429,8 +438,17 @@ class CombatMap:
             sto = self.meet_halfway_v2(tup[0], tup[1], tup[2])
         return sto[0], sto[1], sto[2], tup[3]
 
+    # ------ALL V0.010 Components------
+
+    def shift_map(self, x, y):
+        self.offset[0] += x
+        self.offset[1] += y
+        for i in self.objects:
+            self.canvas.move(i, x, y)
+
+
     def select(self, event):
-        gridPos = [event.x//mapCons, event.y//mapCons]
+        gridPos = [(event.x-self.offset[0])//mapCons, (event.y-self.offset[1])//mapCons]
         print("X: " + str(gridPos[0]) + " Y: " + str(gridPos[1]))
 
         square = self.map[gridPos[1]][gridPos[0]]
@@ -453,8 +471,8 @@ class CombatMap:
     def motion(self, event):
         #should we worry about the mouse moving?
         if self.sel != 0:
-            qx = event.x//mapCons
-            qy = event.y//mapCons
+            qx = (event.x-self.offset[0])//mapCons
+            qy = (event.y-self.offset[1])//mapCons
             #if so, has it made a relevant movement?
             if (qx != self.selLoc[0] or qy != self.selLoc[1]) and qx < self.size[0] and qy < self.size[1]:
                 if self.end_node_built:
@@ -477,10 +495,12 @@ class CombatMap:
 
     def boost(self, event):
         print("ping")
+        self.shift_map(-100, 0)
+        """
         if self.sel != 0:
             self.sel.boost_speed(self.sel.basespeed)
             self.motion(event)
-
+        """
 
     def leave(self, event):
         self.impObs[2] = 1
@@ -609,8 +629,8 @@ Wall tests:
 """
 
 def main():
-    width = 10
-    height = 16
+    width = 30
+    height = 25
     playarea = CombatMap(width, height)
 
     playarea.add_wall(3, 4, 4, 4)
@@ -628,7 +648,7 @@ def main():
     playarea.build_corner_graph()
     #playarea.clean_path()
 
-    playarea.add_char(1, 4, 1, 8)
+    playarea.add_char(1, 4, 1, 99)
     print("total objects: " + str(len(playarea.objects)))
 
 
@@ -651,9 +671,10 @@ def main():
     return 1
 
 
-main()
+#main()
 
-
+def test():
+    print("hello world")
 
 """
 Timing tests:

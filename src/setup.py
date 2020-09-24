@@ -85,7 +85,7 @@ class menu:
         fullscreen_text = Label(self.master, width=10, height=1, bg="gray50", text="Fullscreen", relief="flat")
         self.fs_bool = IntVar()
         fullscreen_button = Checkbutton(self.master, variable=self.fs_bool, bg="gray30", relief="flat")
-        c = Button(self.master, text="Clear", width=10, height=2, command=self.printout)
+        c = Button(self.master, text="Enter", width=10, height=2, command=self.printout)
 
 
         reso_text = Label(self.master, width=8, height=1, bg="gray50", text="Resolution", relief="flat")

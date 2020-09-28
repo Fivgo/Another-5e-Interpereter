@@ -11,6 +11,7 @@ class menu:
         5: "blue",
         6: "gray12"
     }
+    fileName = None
     tripwire = 1
     reso = 3
     dropdown_toggle = False
@@ -65,13 +66,15 @@ class menu:
 
     def printout(self):
         str = self.file_inp.get()
-        if str == "":
-            str = None
+        if str != "":
+            self.fileName = str
 
-        print("Fullscreen:", self.fs_bool.get(), " Filename:", str, " Reso mode:", self.reso)
+        print("Fullscreen:", self.fs_bool.get(), " Filename:", self.fileName, " Reso mode:", self.reso)
+        self.quit()
 
     def quit(self):
         self.tripwire = 0
+        self.master.destroy()
 
     def __init__(self):
         self.master = Tk()
@@ -147,5 +150,10 @@ def ma():
     while welcome.tripwire:
         welcome.master.update_idletasks()
         welcome.master.update()
+    fn = welcome.fileName
+    fs = welcome.fs_bool.get()
+    res = welcome.reso
+    del welcome
+    main_app(fn, fs, res)
 
 ma()

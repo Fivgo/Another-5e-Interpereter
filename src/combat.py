@@ -6,7 +6,7 @@ from tkinter import *
 import math
 
 
-mapCons = 100
+mapCons = 50
 mapConsCen = mapCons//2
 spacing = mapCons//10+2
 
@@ -22,9 +22,18 @@ class CombatMap:
         5: "blue",
         6: "gray12"
     }
+    resoDict = {
+        1: "2560x1440",
+        2: "1920x1200",
+        3: "1920x1080",
+        4: "1280x800",
+        5: "1280x720"
+    }
 
     #[0] : out of range flag [1]: select line object OBSO [2]: tripwire [3]: debug pathH [4]: graph paths
     impObs = [0, 0, 0, 0, 0]
+    #[0] : shift
+    keyHelds = [0]
     size = [5, 5]
     offset = [0, 0]
     sel = 0
@@ -46,16 +55,22 @@ class CombatMap:
     pathHardpoints = []
 
 #______ALL V0.010 Components______
-    def draw_map(self, x, y):
+    def draw_map(self, x, y, fs, res):
         self.size[0] = x
         self.size[1] = y
         self.master = Tk()
+        self.master.geometry(self.resoDict[res])
+        if fs:
+            self.master.attributes("-fullscreen", True)
+
+
+
         self.master.title("Another 5e Interpreter")
         self.canvas = Canvas(self.master,
                              width=mapCons * x,
                              height=mapCons * y)
 
-        self.canvas.pack()
+        self.canvas.place(x=0, y=0)
         """
         draws lines onto canvas and stores them into the objects list for referencing
         """
@@ -71,8 +86,8 @@ class CombatMap:
                                                         fill=self.colorDict[1]))
 
     def draw_line(self, x1, y1, x2, y2, m=2):
-        self.pathLine.append(self.canvas.create_line(x1 * mapCons + mapConsCen + self.offset[0], y1 * mapCons + mapConsCen + self.offset[1],
-                                                     x2 * mapCons + mapConsCen + self.offset[0], y2 * mapCons + mapConsCen + self.offset[1],
+        self.pathLine.append(self.canvas.create_line(x1 * mapCons + mapConsCen, y1 * mapCons + mapConsCen,
+                                                     x2 * mapCons + mapConsCen, y2 * mapCons + mapConsCen,
                                                      width=3, fill=self.colorDict[m]))
 
     def draw_node_path(self, x, y, ref):
@@ -440,15 +455,20 @@ class CombatMap:
 
     # ------ALL V0.010 Components------
 
-    def shift_map(self, x, y):
+    def shift_canvas(self, x, y):
         self.offset[0] += x
         self.offset[1] += y
-        for i in self.objects:
-            self.canvas.move(i, x, y)
+        self.canvas.place(x=self.offset[0], y=self.offset[1])
 
+
+    def ping(self, event):
+        print("mx:", event.x, " y:", event.y)
+
+    def pingc(self, event):
+        print("cx:", event.x, " y:", event.y)
 
     def select(self, event):
-        gridPos = [(event.x-self.offset[0])//mapCons, (event.y-self.offset[1])//mapCons]
+        gridPos = [event.x//mapCons, event.y//mapCons]
         print("X: " + str(gridPos[0]) + " Y: " + str(gridPos[1]))
 
         square = self.map[gridPos[1]][gridPos[0]]
@@ -471,8 +491,8 @@ class CombatMap:
     def motion(self, event):
         #should we worry about the mouse moving?
         if self.sel != 0:
-            qx = (event.x-self.offset[0])//mapCons
-            qy = (event.y-self.offset[1])//mapCons
+            qx = event.x//mapCons
+            qy = event.y//mapCons
             #if so, has it made a relevant movement?
             if (qx != self.selLoc[0] or qy != self.selLoc[1]) and qx < self.size[0] and qy < self.size[1]:
                 if self.end_node_built:
@@ -493,9 +513,15 @@ class CombatMap:
             self.sel.set_speed()
             self.motion(event)
 
+    def scroll(self, event):
+        self.shift_canvas(0, event.delta)
+
+    def scrollx(self, event):
+        self.shift_canvas(event.delta, 0)
+
     def boost(self, event):
         print("ping")
-        self.shift_map(-100, 0)
+        self.shift_canvas(-100, 0)
         """
         if self.sel != 0:
             self.sel.boost_speed(self.sel.basespeed)
@@ -515,52 +541,25 @@ class CombatMap:
             print("")
         print("---------------")
 
-    def __init__(self, x=5, y=5):
+    def __init__(self, fs, res, x=5, y=5):
         for i in range(y):
             temp = []
             for j in range(x):
                 temp.append(object(j, i))
             self.map.append(temp)
-        self.draw_map(x, y)
+        self.draw_map(x, y, fs, res)
+
         self.canvas.bind("<ButtonRelease-1>", self.select)
-        self.canvas.bind("<Button-2>", self.leave)
         self.canvas.bind("<Button-3>", self.printOut)
         self.canvas.bind("<Motion>", self.motion)
+
+
+        self.master.bind("<MouseWheel>", self.scroll)
+        self.master.bind("<Shift-MouseWheel>", self.scrollx)
+        self.master.bind("<Button-2>", self.leave)
+        #self.master.bind("<Motion>", self.ping)
         self.master.bind("r", self.restore)
         self.master.bind("b", self.boost)
-
-
-
-"""
-    def moveNorth(self, ID):
-        for i in self.players:
-            if i.player_ID == ID:
-                self.map[i.playerLoc_Y][i.playerLoc_X] = 0
-                i.playerLoc_Y -= 1
-                self.map[i.playerLoc_Y][i.playerLoc_X] = ID
-
-    def moveEast(self, ID):
-        for i in self.players:
-            if i.player_ID == ID:
-                self.map[i.playerLoc_Y][i.playerLoc_X] = 0
-                i.playerLoc_X += 1
-                self.map[i.playerLoc_Y][i.playerLoc_X] = ID
-
-    def moveSouth(self, ID):
-        for i in self.players:
-            if i.player_ID == ID:
-                self.map[i.playerLoc_Y][i.playerLoc_X] = 0
-                i.playerLoc_Y += 1
-                self.map[i.playerLoc_Y][i.playerLoc_X] = ID
-
-    def moveWest(self, ID):
-        for i in self.players:
-            if i.player_ID == ID:
-                self.map[i.playerLoc_Y][i.playerLoc_X] = 0
-                i.playerLoc_X -= 1
-                self.map[i.playerLoc_Y][i.playerLoc_X] = ID
-                i.printOut()
-"""
 
 
 class Graph:
@@ -628,17 +627,18 @@ Wall tests:
     playarea.add_wall(2, 14, 8, 14)
 """
 
-def main():
+def main_app(fn, fs, res):
+    print("cFullscreen:", fs, " Filename:", fn, " Reso mode:", res)
     width = 30
     height = 25
-    playarea = CombatMap(width, height)
+    playarea = CombatMap(fs, res, width, height)
 
     playarea.add_wall(3, 4, 4, 4)
     playarea.add_wall(5, 3, 5, 5)
     playarea.add_wall(4, 6, 4, 6)
 
     playarea.add_wall(2, 8, 9, 8)
-    playarea.add_wall(2, 8, 8, 8)
+    #playarea.add_wall(2, 8, 8, 8)
     playarea.add_wall(5, 9, 5, 12)
     playarea.add_wall(3, 10, 3, 13)
     playarea.add_wall(7, 10, 7, 13)

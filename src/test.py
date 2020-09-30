@@ -1,4 +1,28 @@
 
+
+"""
+def foo():
+    print("Hello world!")
+
+switch = {
+    0 : "hello",
+    1 : "world",
+    2 : foo
+}
+
+sto = switch[2]
+sto()
+"""
+
+sto = [0,1,2,3,4]
+print(sto.pop(2))
+
+
+#for i in range(len([1,2,3,4])-1, -1, -2):
+#    print(i)
+
+
+"""
 from tkinter import *
 
 def create_win():
@@ -21,7 +45,7 @@ Button(root,text="Create win2",command=create_win).pack()
 
 root.geometry('%sx%s'%(w,h))
 root.mainloop()
-
+"""
 
 
 """

@@ -4,7 +4,7 @@
 import time
 from tkinter import *
 import math
-
+from PIL import ImageTk, Image
 
 mapCons = 50
 mapConsCen = mapCons//2
@@ -41,7 +41,6 @@ class CombatMap:
     objects = []
     wallList = []
 
-
     cornerGraph = []
     graphDist = []
     bestprice = None
@@ -53,6 +52,15 @@ class CombatMap:
     pathLine = []
     pathHighlight = []
     pathHardpoints = []
+
+    #Each item in list is [Obj, sx, sy]
+    widgetList = []
+    #Stack contains [(Obj, sx, sy, dx, dy), step]
+    animationStack = []
+
+    processing = False
+    left_tab_open = False
+    right_tab_open = False
 
 #______ALL V0.010 Components______
     def draw_map(self, x, y, fs, res):
@@ -71,6 +79,9 @@ class CombatMap:
                              height=mapCons * y)
 
         self.canvas.place(x=0, y=0)
+        self.draw_left_canvas()
+        self.draw_left_tab()
+
         """
         draws lines onto canvas and stores them into the objects list for referencing
         """
@@ -84,6 +95,8 @@ class CombatMap:
             self.objects.append(self.canvas.create_line(0, i * mapCons,
                                                         mapCons * x, i * mapCons,
                                                         fill=self.colorDict[1]))
+
+
 
     def draw_line(self, x1, y1, x2, y2, m=2):
         self.pathLine.append(self.canvas.create_line(x1 * mapCons + mapConsCen, y1 * mapCons + mapConsCen,
@@ -161,8 +174,6 @@ class CombatMap:
                 self.cornerGraph[pos].add_path(c, dis)
                 v.add_path(pos, dis)
         #print(self.cornerGraph[pos].connections)
-
-
 
     def get_conflicts(self, lis):
         for i in lis:
@@ -453,14 +464,65 @@ class CombatMap:
             sto = self.meet_halfway_v2(tup[0], tup[1], tup[2])
         return sto[0], sto[1], sto[2], tup[3]
 
-    # ------ALL V0.010 Components------
+    # ^^^^^ALL V0.010 Components^^^^^
 
     def shift_canvas(self, x, y):
         self.offset[0] += x
         self.offset[1] += y
         self.canvas.place(x=self.offset[0], y=self.offset[1])
 
+    def draw_left_canvas(self):
+        self.left_canvas = [Canvas(self.master, borderwidth=1, highlightbackground="black"), -.25, 0]
+        self.left_canvas[0].place(relx=-.25, rely=0, relwidth=.25, relheight=1)
+        #>>>>>>>>>TEMP FIX!!! NEED TO TOUCH UP<<<<<<<<<<
+        self.left_canvas[0].create_rectangle(0, 0, 1500, 1500, fill="blue")
 
+
+    def draw_left_tab(self):
+        self.left_img = PhotoImage(file="../images/arrow_tab_right.png")
+        self.left_tab_button = [Button(self.master, image=self.left_img,
+                                       borderwidth=0, command=self.open_left_canvas), 0, .2]
+        self.left_tab_button[0].place(relx=0, rely=.2)
+
+    def open_left_canvas(self):
+        if not self.processing:
+            if self.left_tab_open:
+                self.animationStack.append((self.left_tab_button, -.25, 0))
+                self.animationStack.append(16)
+                self.animationStack.append((self.left_canvas, -.25, 0))
+                self.animationStack.append(16)
+            else:
+                self.animationStack.append((self.left_tab_button, .25, 0))
+                self.animationStack.append(16)
+                self.animationStack.append((self.left_canvas, .25, 0))
+                self.animationStack.append(16)
+
+        self.left_tab_open = not self.left_tab_open
+
+    anim_cons = (1, .99, .9866, .9822, .9762, .9683, .9578, .9437, .9249,
+                 .9, .8665, .822, .7627, .6836, .5781, .4375, .25)
+
+    def shift_widget_v1(self, tup, step):
+        tup[0][0].place(relx=tup[0][1]+tup[1]*self.anim_cons[step],
+                        rely=tup[0][2]+tup[2]*self.anim_cons[step], anchor="nw")
+
+    # ------Animation events--------
+    def check_animation_buffer(self):
+        for i in range(len(self.animationStack)-1, -1, -2):
+            self.shift_widget_v1(self.animationStack[i-1], self.animationStack[i])
+            if self.animationStack[i]:
+                self.animationStack[i] -= 1
+            else:
+                print("removing 2 items")
+                #Update the curX and curY of the object
+                self.animationStack[i - 1][0][1] += self.animationStack[i - 1][1]
+                self.animationStack[i - 1][0][2] += self.animationStack[i - 1][2]
+                #Remove the packet from the stack
+                self.animationStack.pop(i - 1)
+                self.animationStack.pop(i - 1)
+
+
+    # ------Keyboard events---------
     def ping(self, event):
         print("mx:", event.x, " y:", event.y)
 
@@ -620,7 +682,6 @@ Wall tests:
     
     obstacle 2:
     playarea.add_wall(2, 8, 9, 8)
-    playarea.add_wall(2, 8, 8, 8)
     playarea.add_wall(5, 9, 5, 12)
     playarea.add_wall(3, 10, 3, 13)
     playarea.add_wall(7, 10, 7, 13)
@@ -638,7 +699,6 @@ def main_app(fn, fs, res):
     playarea.add_wall(4, 6, 4, 6)
 
     playarea.add_wall(2, 8, 9, 8)
-    #playarea.add_wall(2, 8, 8, 8)
     playarea.add_wall(5, 9, 5, 12)
     playarea.add_wall(3, 10, 3, 13)
     playarea.add_wall(7, 10, 7, 13)
@@ -657,7 +717,11 @@ def main_app(fn, fs, res):
     while True:
         playarea.master.update_idletasks()
         playarea.master.update()
-        fps += 1
+
+        #fps += 1
+        if time.time() - start > .0166667:
+            playarea.check_animation_buffer()
+            start = time.time()
         """
         if time.time() - start > 1:
             start = time.time()
